@@ -13,9 +13,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Plus, Upload, File, X } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { v4 as uuidv4 } from '@supabase/supabase-js';
+import { v4 as uuidv4 } from 'uuid';  // Importation correcte de uuid v4
 import { useToast } from '@/hooks/use-toast';
-import { Project } from '../types/Project';
+import { Project } from '../types/Project';  // Utilisation du type Project depuis types/Project.ts
 import { Progress } from '@/components/ui/progress';
 
 // Initialisation du client Supabase
