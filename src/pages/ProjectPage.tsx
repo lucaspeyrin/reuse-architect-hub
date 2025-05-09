@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import MainLayout from '../layouts/MainLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, FilePlus, FileText, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, FilePlus, FileText, Send, Trash2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/dialog';
 import { createClient } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 // Initialisation du client Supabase
 const supabaseUrl = 'https://your-project.supabase.co';
@@ -50,6 +52,11 @@ interface TemplateSection {
   instructions: string;
 }
 
+interface UnlinkedReport {
+  id: string;
+  title: string;
+}
+
 const ProjectPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState('documents');
@@ -57,16 +64,24 @@ const ProjectPage: React.FC = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
   const [isDocumentDialogOpen, setIsDocumentDialogOpen] = useState(false);
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [isLinkReportDialogOpen, setIsLinkReportDialogOpen] = useState(false);
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedReportFile, setSelectedReportFile] = useState<File | null>(null);
+  const [reportTitle, setReportTitle] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [templateSections, setTemplateSections] = useState<TemplateSection[]>([]);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [customInstructions, setCustomInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [unlinkedReports, setUnlinkedReports] = useState<UnlinkedReport[]>([]);
+  const [selectedUnlinkedReport, setSelectedUnlinkedReport] = useState<string>('');
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   
   // Mock project data - en production, serait récupéré depuis Supabase
   const project = {
@@ -81,6 +96,7 @@ const ProjectPage: React.FC = () => {
   useEffect(() => {
     fetchProjectData();
     fetchTemplates();
+    fetchUnlinkedReports();
   }, [id]);
   
   const fetchProjectData = async () => {
@@ -95,7 +111,7 @@ const ProjectPage: React.FC = () => {
         { id: 'd3', name: 'Inventaire préliminaire.xlsx', type: 'excel', date: '12/05/2025' },
       ];
       
-      const mockChatMessages = [
+      const mockChatMessages: ChatMessage[] = [
         { id: 'm1', sender: 'user', text: 'Quels sont les matériaux principaux identifiés dans ce projet ?', time: '14:25' },
         { id: 'm2', sender: 'bot', text: 'Dans ce projet de rénovation, les principaux matériaux identifiés pour le réemploi sont : des parquets en chêne massif (environ 120m²), des portes anciennes en bois (15 unités), des radiateurs en fonte (12 unités), des carreaux de ciment dans les parties communes, et plusieurs luminaires en laiton. L\'inventaire préliminaire estime une valeur de réemploi potentielle d\'environ 45 000€.', time: '14:26' },
       ];
@@ -111,6 +127,27 @@ const ProjectPage: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  const fetchUnlinkedReports = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, title')
+        .eq('rapport', true)
+        .is('project_id', null);
+      
+      if (error) throw error;
+      
+      setUnlinkedReports(data);
+    } catch (error) {
+      console.error('Erreur lors du chargement des rapports non liés:', error);
+      // Rapports non liés de secours
+      setUnlinkedReports([
+        { id: 'ur1', title: 'Rapport général de réemploi' },
+        { id: 'ur2', title: 'Analyse de durabilité des matériaux' },
+      ]);
     }
   };
   
@@ -245,7 +282,13 @@ const ProjectPage: React.FC = () => {
     }
   };
   
-  const handleUploadDocuments = async () => {
+  const handleReportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedReportFile(e.target.files[0]);
+    }
+  };
+  
+  const handleImportDocuments = async () => {
     if (selectedFiles.length === 0) {
       toast({
         title: "Erreur",
@@ -258,17 +301,39 @@ const ProjectPage: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      const formData = new FormData();
-      formData.append('project_id', id || '');
+      const documentUrls = [];
       
-      selectedFiles.forEach(file => {
-        formData.append('documents', file);
-      });
+      // Upload des documents dans le bucket
+      for (const file of selectedFiles) {
+        const filePath = `documents/${id}/${file.name}`;
+        
+        // Upload du fichier
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(filePath, file);
+          
+        if (uploadError) throw uploadError;
+        
+        // Récupérer l'URL du document
+        const { data: urlData } = await supabase.storage
+          .from('documents')
+          .getPublicUrl(filePath);
+          
+        if (urlData) {
+          documentUrls.push(urlData.publicUrl);
+        }
+      }
       
-      // Appel au webhook d'ajout de documents
+      // Appel au webhook pour ajouter les documents au projet
       const response = await fetch('https://api.ia2s.app/webhook/raedificare/project/documents/add', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: id,
+          document_urls: documentUrls,
+        }),
       });
       
       if (!response.ok) {
@@ -296,6 +361,153 @@ const ProjectPage: React.FC = () => {
       toast({
         title: "Erreur",
         description: "Impossible d'importer les documents",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  const handleUploadReport = async () => {
+    if (!selectedReportFile || !reportTitle) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner un fichier et entrer un titre",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Upload du rapport dans le bucket
+      const filePath = `documents/${id}/rapports/${selectedReportFile.name}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, selectedReportFile);
+        
+      if (uploadError) throw uploadError;
+      
+      // Récupérer l'URL du document
+      const { data: urlData } = await supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+        
+      if (!urlData) throw new Error("Impossible de récupérer l'URL du rapport");
+      
+      // Appel au webhook pour ajouter le rapport au projet
+      const response = await fetch('https://api.ia2s.app/webhook/raedificare/project/rapport/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: id,
+          document_url: urlData.publicUrl,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+      
+      // Ajouter le rapport à l'affichage local
+      const newDocument = {
+        id: `new${Date.now()}`,
+        name: reportTitle,
+        type: selectedReportFile.type.split('/')[1] || 'pdf',
+        date: new Date().toLocaleDateString('fr-FR'),
+      };
+      
+      setDocuments(prev => [newDocument, ...prev]);
+      setSelectedReportFile(null);
+      setReportTitle('');
+      setIsReportDialogOpen(false);
+      
+      toast({
+        title: "Succès",
+        description: "Rapport importé avec succès",
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'upload du rapport:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'importer le rapport",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  const handleLinkReport = async () => {
+    if (!selectedUnlinkedReport) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner un rapport",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Appel au webhook pour lier le rapport au projet
+      const response = await fetch('https://api.ia2s.app/webhook/raedificare/project/rapport/link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: id,
+          document_id: selectedUnlinkedReport,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+      
+      // Mettre à jour dans Supabase
+      const { error } = await supabase
+        .from('documents')
+        .update({ project_id: id })
+        .eq('id', selectedUnlinkedReport);
+        
+      if (error) throw error;
+      
+      // Trouver le titre du rapport
+      const selectedReport = unlinkedReports.find(report => report.id === selectedUnlinkedReport);
+      
+      if (selectedReport) {
+        // Ajouter le rapport à l'affichage local
+        const newDocument = {
+          id: selectedUnlinkedReport,
+          name: selectedReport.title,
+          type: 'pdf',
+          date: new Date().toLocaleDateString('fr-FR'),
+        };
+        
+        setDocuments(prev => [newDocument, ...prev]);
+      }
+      
+      // Mettre à jour la liste des rapports non liés
+      setUnlinkedReports(prev => prev.filter(r => r.id !== selectedUnlinkedReport));
+      setSelectedUnlinkedReport('');
+      setIsLinkReportDialogOpen(false);
+      
+      toast({
+        title: "Succès",
+        description: "Rapport lié avec succès au projet",
+      });
+    } catch (error) {
+      console.error('Erreur lors de la liaison du rapport:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de lier le rapport au projet",
         variant: "destructive"
       });
     } finally {
@@ -402,26 +614,54 @@ const ProjectPage: React.FC = () => {
         </div>
       </div>
       
-      <div className="flex justify-between items-center mb-6">
-        <p className="text-neutral-600">{project.description}</p>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            className="flex items-center gap-2"
-            onClick={() => setIsDocumentDialogOpen(true)}
-          >
-            <FilePlus className="h-4 w-4" />
-            <span>Importer document</span>
-          </Button>
-          <Button 
-            className="flex items-center gap-2"
-            style={{ backgroundColor: '#eb661a' }}
-            onClick={() => setIsGenerateDialogOpen(true)}
-          >
-            <FileText className="h-4 w-4" />
-            <span>Générer un rapport</span>
-          </Button>
+      <div className="flex flex-col mb-6">
+        <div className="flex flex-col sm:flex-row justify-between gap-4 w-full mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 flex-1 w-full">
+            <DropdownMenu open={isImportMenuOpen} onOpenChange={setIsImportMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="flex items-center gap-2 flex-1 justify-center"
+                >
+                  <FilePlus className="h-4 w-4" />
+                  <span>Importer</span>
+                  <ChevronDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => {
+                  setIsImportMenuOpen(false);
+                  setIsDocumentDialogOpen(true);
+                }}>
+                  Importer un document
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  setIsImportMenuOpen(false);
+                  setIsReportDialogOpen(true);
+                }}>
+                  Importer un rapport
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  setIsImportMenuOpen(false);
+                  setIsLinkReportDialogOpen(true);
+                }}>
+                  Lier un rapport existant
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <Button 
+              className="flex items-center gap-2 flex-1 justify-center"
+              style={{ backgroundColor: '#eb661a' }}
+              onClick={() => setIsGenerateDialogOpen(true)}
+            >
+              <FileText className="h-4 w-4" />
+              <span>Générer un rapport</span>
+            </Button>
+          </div>
         </div>
+        
+        <div className="text-neutral-600">{project.description}</div>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -679,11 +919,136 @@ const ProjectPage: React.FC = () => {
               Annuler
             </Button>
             <Button 
-              onClick={handleUploadDocuments} 
+              onClick={handleImportDocuments} 
               disabled={selectedFiles.length === 0 || isSubmitting}
               style={{ backgroundColor: '#eb661a' }}
             >
               {isSubmitting ? 'Importation...' : 'Importer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Dialog d'importation de rapport */}
+      <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Importer un rapport</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="report-title">Titre du rapport *</Label>
+                <Input
+                  id="report-title"
+                  value={reportTitle}
+                  onChange={(e) => setReportTitle(e.target.value)}
+                  placeholder="Rapport de diagnostic - Projet X"
+                  required
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label>Fichier du rapport</Label>
+                <div
+                  className="border-2 border-dashed border-neutral-300 rounded-md p-6 text-center"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      setSelectedReportFile(e.dataTransfer.files[0]);
+                    }
+                  }}
+                >
+                  <input
+                    id="report-file"
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleReportFileChange}
+                  />
+                  <label 
+                    htmlFor="report-file"
+                    className="flex flex-col items-center cursor-pointer"
+                  >
+                    <FileText className="h-8 w-8 text-neutral-400 mb-2" />
+                    <span className="text-sm text-neutral-600 mb-1">
+                      Glissez-déposez votre fichier ici
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      ou cliquez pour parcourir
+                    </span>
+                  </label>
+                </div>
+                
+                {selectedReportFile && (
+                  <div className="mt-2 text-sm text-neutral-600">
+                    <span className="font-medium">Fichier sélectionné :</span> {selectedReportFile.name}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsReportDialogOpen(false)} disabled={isSubmitting}>
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleUploadReport} 
+              disabled={!selectedReportFile || !reportTitle || isSubmitting}
+              style={{ backgroundColor: '#eb661a' }}
+            >
+              {isSubmitting ? 'Importation...' : 'Importer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Dialog pour lier un rapport existant */}
+      <Dialog open={isLinkReportDialogOpen} onOpenChange={setIsLinkReportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Lier un rapport existant</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="unlinked-report">Rapport à lier</Label>
+                <Select value={selectedUnlinkedReport} onValueChange={setSelectedUnlinkedReport}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Sélectionner un rapport" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {unlinkedReports.length === 0 ? (
+                      <SelectItem value="none" disabled>
+                        Aucun rapport disponible
+                      </SelectItem>
+                    ) : (
+                      unlinkedReports.map((report) => (
+                        <SelectItem key={report.id} value={report.id}>
+                          {report.title}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLinkReportDialogOpen(false)} disabled={isSubmitting}>
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleLinkReport} 
+              disabled={!selectedUnlinkedReport || isSubmitting || unlinkedReports.length === 0}
+              style={{ backgroundColor: '#eb661a' }}
+            >
+              {isSubmitting ? 'Liaison...' : 'Lier le rapport'}
             </Button>
           </DialogFooter>
         </DialogContent>

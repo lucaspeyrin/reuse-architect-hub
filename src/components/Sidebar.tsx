@@ -21,6 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, toggleCollapse }) => {
   
   const menuItems = [
     { path: '/', label: 'Projets', icon: <Folder className="h-5 w-5" /> },
+    { path: '/reports', label: 'Rapports', icon: <FileText className="h-5 w-5" /> },
     { path: '/generate-content', label: 'Générer du contenu', icon: <FileText className="h-5 w-5" /> },
     { path: '/templates', label: 'Templates rapports', icon: <Book className="h-5 w-5" /> },
     { path: '/chat-reports', label: 'Discuter avec les rapports', icon: <MessageSquare className="h-5 w-5" /> },
@@ -29,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, toggleCollapse }) => {
   return (
     <aside
       className={cn(
-        "fixed top-0 left-0 h-full bg-white border-r border-neutral-200 transition-all duration-300 z-20",
+        "fixed top-0 left-0 h-full bg-white border-r border-neutral-200 transition-all duration-300 z-20 hidden md:block",
         collapsed ? "w-16" : "w-64"
       )}
     >

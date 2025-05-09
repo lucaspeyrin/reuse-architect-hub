@@ -3,10 +3,12 @@ import React, { useState, useEffect } from 'react';
 import MainLayout from '../layouts/MainLayout';
 import ProjectGrid from '../components/ProjectGrid';
 import CreateProjectButton from '../components/CreateProjectButton';
-import { Project } from '../components/ProjectCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from '@supabase/supabase-js';
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
+import { Project, ProjectStatus } from '../types/Project';
 
 // Initialisation du client Supabase
 const supabaseUrl = 'https://your-project.supabase.co';
@@ -18,6 +20,7 @@ const Index: React.FC = () => {
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<string>('newest');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
 
@@ -27,7 +30,7 @@ const Index: React.FC = () => {
   
   useEffect(() => {
     applyFiltersAndSort();
-  }, [projects, statusFilter, sortOrder]);
+  }, [projects, statusFilter, sortOrder, searchQuery]);
 
   const fetchProjects = async () => {
     setIsLoading(true);
@@ -108,6 +111,16 @@ const Index: React.FC = () => {
   const applyFiltersAndSort = () => {
     let result = [...projects];
     
+    // Appliquer le filtre de recherche
+    if (searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(project => 
+        project.title.toLowerCase().includes(query) || 
+        project.client.toLowerCase().includes(query) ||
+        project.description.toLowerCase().includes(query)
+      );
+    }
+    
     // Appliquer le filtre de statut
     if (statusFilter !== 'all') {
       result = result.filter(project => project.status === statusFilter);
@@ -125,13 +138,20 @@ const Index: React.FC = () => {
     setFilteredProjects(result);
   };
   
-  // Fonction pour ajouter un nouveau projet (appelée par le composant CreateProjectButton)
+  // Fonction pour ajouter un nouveau projet
   const addProject = (newProject: Project) => {
     setProjects(prev => [newProject, ...prev]);
     toast({
       title: "Projet créé",
       description: `Le projet "${newProject.title}" a été créé avec succès.`
     });
+  };
+  
+  // Fonction pour mettre à jour le statut d'un projet
+  const handleProjectStatusChange = (projectId: string, newStatus: ProjectStatus) => {
+    setProjects(prev => prev.map(project => 
+      project.id === projectId ? { ...project, status: newStatus } : project
+    ));
   };
 
   return (
@@ -142,33 +162,45 @@ const Index: React.FC = () => {
       </div>
       
       <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="w-full sm:w-48">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrer par statut" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="draft">Brouillon</SelectItem>
-                <SelectItem value="in_progress">En cours</SelectItem>
-                <SelectItem value="completed">Terminé</SelectItem>
-                <SelectItem value="archived">Archivé</SelectItem>
-                <SelectItem value="pending">En attente</SelectItem>
-              </SelectContent>
-            </Select>
+        <div className="flex flex-col sm:flex-row gap-4 w-full">
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <Input
+              placeholder="Rechercher un projet..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
           </div>
           
-          <div className="w-full sm:w-48">
-            <Select value={sortOrder} onValueChange={setSortOrder}>
-              <SelectTrigger>
-                <SelectValue placeholder="Trier par" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Plus récents d'abord</SelectItem>
-                <SelectItem value="oldest">Plus anciens d'abord</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex gap-4 w-full sm:w-auto">
+            <div className="w-full sm:w-48">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filtrer par statut" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="draft">Brouillon</SelectItem>
+                  <SelectItem value="in_progress">En cours</SelectItem>
+                  <SelectItem value="completed">Terminé</SelectItem>
+                  <SelectItem value="archived">Archivé</SelectItem>
+                  <SelectItem value="pending">En attente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="w-full sm:w-48">
+              <Select value={sortOrder} onValueChange={setSortOrder}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Trier par" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Plus récents d'abord</SelectItem>
+                  <SelectItem value="oldest">Plus anciens d'abord</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
         
@@ -191,7 +223,7 @@ const Index: React.FC = () => {
           </p>
         </div>
       ) : (
-        <ProjectGrid projects={filteredProjects} />
+        <ProjectGrid projects={filteredProjects} onStatusChange={handleProjectStatusChange} />
       )}
     </MainLayout>
   );

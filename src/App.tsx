@@ -10,6 +10,7 @@ import ProjectPage from "./pages/ProjectPage";
 import GenerateContent from "./pages/GenerateContent";
 import Templates from "./pages/Templates";
 import ChatWithReports from "./pages/ChatWithReports";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 
@@ -63,6 +64,7 @@ const App = () => {
             <Route path="/generate-content" element={<ProtectedRoute><GenerateContent /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
             <Route path="/chat-reports" element={<ProtectedRoute><ChatWithReports /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
