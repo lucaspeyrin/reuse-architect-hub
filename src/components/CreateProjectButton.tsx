@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Dialog, 
@@ -13,9 +12,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Plus, Upload, File, X } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { v4 as uuidv4 } from 'uuid';  // Importation correcte de uuid v4
 import { useToast } from '@/hooks/use-toast';
-import { Project } from '../types/Project';  // Utilisation du type Project depuis types/Project.ts
+import { Project } from '../types/Project';
 import { Progress } from '@/components/ui/progress';
 
 // Initialisation du client Supabase
@@ -75,8 +73,6 @@ const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCrea
     setProgress(10); // Démarre le progrès
     
     try {
-      // Création du projet dans Supabase
-      const projectId = uuidv4();
       const documentUrls = [];
       
       // Upload des documents si présents
@@ -85,7 +81,9 @@ const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCrea
         
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i];
-          const filePath = `documents/${projectId}/${file.name}`;
+          // Générons un nom de fichier unique basé sur le timestamp et le nom du fichier
+          const timestamp = new Date().getTime();
+          const filePath = `documents/${timestamp}_${file.name.replace(/\s/g, '_')}`;
           
           // Upload du fichier
           const { data: uploadData, error: uploadError } = await supabase.storage
@@ -136,11 +134,11 @@ const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCrea
       
       // Créer l'objet projet pour l'affichage
       const newProject: Project = {
-        id: result.project_id || projectId,
+        id: result.project_id, // On utilise l'ID généré par Supabase via l'API
         title,
         client,
         description,
-        status: 'draft',
+        status: 'draft' as const,
         date: new Date().toLocaleDateString('fr-FR'),
       };
       
