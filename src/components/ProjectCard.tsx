@@ -1,15 +1,14 @@
 
 import React from 'react';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { Folder, Clock } from 'lucide-react';
 
 export interface Project {
   id: string;
   title: string;
   client: string;
   description: string;
-  status: 'draft' | 'in_progress' | 'completed' | 'pending' | 'archived';
+  status: 'in_progress' | 'completed' | 'pending';
   date: string;
 }
 
@@ -18,65 +17,40 @@ interface ProjectCardProps {
 }
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
-  const navigate = useNavigate();
-  
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'bg-neutral-200 text-neutral-700';
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-700';
-      case 'completed':
-        return 'bg-green-100 text-green-700';
-      case 'pending':
-        return 'bg-amber-100 text-amber-700';
-      case 'archived':
-        return 'bg-neutral-100 text-neutral-500';
-      default:
-        return 'bg-neutral-200 text-neutral-700';
-    }
+  const statusColors = {
+    in_progress: 'bg-blue-100 text-blue-800',
+    completed: 'bg-green-100 text-green-800',
+    pending: 'bg-amber-100 text-amber-800',
   };
   
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'Brouillon';
-      case 'in_progress':
-        return 'En cours';
-      case 'completed':
-        return 'Terminé';
-      case 'pending':
-        return 'En attente';
-      case 'archived':
-        return 'Archivé';
-      default:
-        return 'Inconnu';
-    }
-  };
-  
-  const handleClick = () => {
-    navigate(`/project/${project.id}`);
+  const statusLabels = {
+    in_progress: 'En cours',
+    completed: 'Terminé',
+    pending: 'En attente',
   };
   
   return (
-    <Card 
-      className="shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-      onClick={handleClick}
-    >
-      <CardContent className="p-6">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="font-medium text-lg">{project.title}</h3>
-          <Badge className={getStatusColor(project.status)}>
-            {getStatusLabel(project.status)}
-          </Badge>
+    <Link to={`/project/${project.id}`} className="card-project block group">
+      <div className="flex justify-between items-start mb-3">
+        <div className="p-2 rounded-md bg-primary-50 text-primary">
+          <Folder className="h-5 w-5" />
         </div>
-        <p className="text-neutral-500 text-sm mb-3">{project.client}</p>
-        <p className="text-neutral-700">{project.description}</p>
-      </CardContent>
-      <CardFooter className="px-6 py-3 bg-neutral-50 text-xs text-neutral-500">
-        Dernière mise à jour: {project.date}
-      </CardFooter>
-    </Card>
+        <div className={`px-2 py-1 rounded text-xs font-medium ${statusColors[project.status]}`}>
+          {statusLabels[project.status]}
+        </div>
+      </div>
+      
+      <h3 className="font-medium text-lg text-neutral-800 mb-1 group-hover:text-primary transition-colors">
+        {project.title}
+      </h3>
+      <p className="text-neutral-500 text-sm mb-3">{project.client}</p>
+      <p className="text-neutral-600 text-sm line-clamp-2 mb-4">{project.description}</p>
+      
+      <div className="flex items-center text-neutral-500 text-xs">
+        <Clock className="h-3.5 w-3.5 mr-1" />
+        <span>Mis à jour le {project.date}</span>
+      </div>
+    </Link>
   );
 };
 
