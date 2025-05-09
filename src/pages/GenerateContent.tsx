@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import MainLayout from '../layouts/MainLayout';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Copy, RefreshCw, FileUp } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Dialog, 
   DialogContent, 
@@ -17,8 +17,6 @@ import {
 } from '@/components/ui/dialog';
 import { createClient } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { Checkbox } from '@/components/ui/checkbox';
 
 // Initialisation du client Supabase
 const supabaseUrl = 'https://your-project.supabase.co';
@@ -31,27 +29,12 @@ interface Rapport {
   project_title: string;
 }
 
-type ContentType = 'blog' | 'linkedin' | 'instagram' | 'facebook';
-
-interface GeneratedContent {
-  type: ContentType;
-  content: string;
-  imageUrl?: string;
-}
-
-const contentTypes: { value: ContentType; label: string }[] = [
-  { value: 'blog', label: 'Blog' },
-  { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'facebook', label: 'Facebook' },
-];
-
 const GenerateContent: React.FC = () => {
-  const [selectedContentTypes, setSelectedContentTypes] = useState<ContentType[]>(['blog']);
-  const [activeContentTab, setActiveContentTab] = useState<ContentType>('blog');
+  const [selectedType, setSelectedType] = useState('blog');
   const [selectedRapport, setSelectedRapport] = useState('');
   const [customInstructions, setCustomInstructions] = useState('');
-  const [generatedContents, setGeneratedContents] = useState<GeneratedContent[]>([]);
+  const [generatedContent, setGeneratedContent] = useState('');
+  const [generatedImageUrl, setGeneratedImageUrl] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [rapportsList, setRapportsList] = useState<Rapport[]>([]);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
@@ -59,31 +42,22 @@ const GenerateContent: React.FC = () => {
   const [uploadTitle, setUploadTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
-  const isMobile = useIsMobile();
   
   useEffect(() => {
     fetchRapports();
   }, []);
   
-  useEffect(() => {
-    // Quand selectedContentTypes change, s'assurer que activeContentTab est toujours valide
-    if (selectedContentTypes.length > 0 && !selectedContentTypes.includes(activeContentTab)) {
-      setActiveContentTab(selectedContentTypes[0]);
-    }
-  }, [selectedContentTypes, activeContentTab]);
-  
   const fetchRapports = async () => {
     try {
       const { data, error } = await supabase
-        .from('documents')
+        .from('rapports')
         .select(`
           id,
           title,
-          projects:project_id (
+          projects (
             title
           )
-        `)
-        .eq('rapport', true);
+        `);
       
       if (error) throw error;
       
@@ -107,20 +81,6 @@ const GenerateContent: React.FC = () => {
     }
   };
   
-  const handleContentTypeChange = (type: ContentType) => {
-    setSelectedContentTypes(prev => {
-      if (prev.includes(type)) {
-        // Retirer le type s'il est déjà sélectionné
-        const newTypes = prev.filter(t => t !== type);
-        // S'assurer qu'il reste au moins un type sélectionné
-        return newTypes.length > 0 ? newTypes : prev;
-      } else {
-        // Ajouter le type
-        return [...prev, type];
-      }
-    });
-  };
-  
   const handleGenerate = async () => {
     if (!selectedRapport) {
       toast({
@@ -131,17 +91,9 @@ const GenerateContent: React.FC = () => {
       return;
     }
     
-    if (selectedContentTypes.length === 0) {
-      toast({
-        title: "Erreur",
-        description: "Veuillez sélectionner au moins un type de contenu",
-        variant: "destructive"
-      });
-      return;
-    }
-    
     setIsGenerating(true);
-    setGeneratedContents([]);
+    setGeneratedContent('');
+    setGeneratedImageUrl('');
     
     try {
       // Appel au webhook pour générer le contenu
@@ -152,7 +104,7 @@ const GenerateContent: React.FC = () => {
         },
         body: JSON.stringify({
           rapport_id: selectedRapport,
-          content_types: selectedContentTypes,
+          content_type: selectedType,
           instructions: customInstructions || undefined,
         }),
       });
@@ -163,31 +115,8 @@ const GenerateContent: React.FC = () => {
       
       const result = await response.json();
       
-      // Traitement des réponses
-      if (result.suggestions && Array.isArray(result.suggestions)) {
-        const contents: GeneratedContent[] = result.suggestions.map((suggestion: any) => ({
-          type: suggestion.content_type,
-          content: suggestion.generated_content || '',
-          imageUrl: suggestion.generated_image_url || undefined,
-        }));
-        
-        setGeneratedContents(contents);
-        
-        // Activer le premier onglet disponible
-        const availableTypes = contents.map(item => item.type);
-        if (availableTypes.length > 0) {
-          setActiveContentTab(availableTypes[0] as ContentType);
-        }
-      } else {
-        // Si aucune suggestion n'est retournée, générer du contenu de secours
-        const defaultContents: GeneratedContent[] = selectedContentTypes.map(type => ({
-          type,
-          content: generateDefaultContent(type),
-        }));
-        
-        setGeneratedContents(defaultContents);
-        setActiveContentTab(selectedContentTypes[0]);
-      }
+      setGeneratedContent(result.content || '');
+      setGeneratedImageUrl(result.image_url || '');
     } catch (error) {
       console.error('Erreur lors de la génération du contenu:', error);
       toast({
@@ -196,24 +125,8 @@ const GenerateContent: React.FC = () => {
         variant: "destructive"
       });
       
-      // Contenu de secours en cas d'erreur pour chaque type demandé
-      const fallbackContents: GeneratedContent[] = selectedContentTypes.map(type => ({
-        type,
-        content: generateDefaultContent(type),
-      }));
-      
-      setGeneratedContents(fallbackContents);
-      setActiveContentTab(selectedContentTypes[0]);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-  
-  // Fonction pour générer du contenu par défaut selon le type
-  const generateDefaultContent = (type: ContentType): string => {
-    switch (type) {
-      case 'blog':
-        return `# Le réemploi des matériaux : une solution d'avenir pour le secteur du bâtiment
+      // Contenu de secours en cas d'erreur
+      setGeneratedContent(`# Le réemploi des matériaux : une solution d'avenir pour le secteur du bâtiment
 
 Le secteur du bâtiment est responsable de près de 70% des déchets produits en France. Face à ce constat alarmant, le réemploi des matériaux s'impose comme une solution innovante et durable. Chez RAEDIFICARE, nous nous engageons quotidiennement dans cette démarche.
 
@@ -229,62 +142,14 @@ Le réemploi des matériaux présente de nombreux avantages :
 
 Notre équipe de diagnostiqueurs spécialisés intervient sur l'ensemble du territoire pour identifier, caractériser et valoriser les matériaux réemployables dans vos projets de rénovation ou de démolition.
 
-Contactez-nous pour découvrir comment RAEDIFICARE peut vous accompagner dans votre démarche d'économie circulaire.`;
-      
-      case 'linkedin':
-        return `🔄 #ÉconomieCirculaire | Saviez-vous que le secteur du bâtiment génère 70% des déchets en France ?
-
-Chez RAEDIFICARE, nous transformons cette problématique en opportunité grâce au réemploi des matériaux. Notre dernier projet a permis de valoriser plus de 45 tonnes de matériaux qui auraient autrement fini en décharge.
-
-Notre équipe d'experts intervient sur l'ensemble du territoire pour diagnostiquer, caractériser et valoriser les matériaux réemployables dans vos projets.
-
-✅ Réduction de l'empreinte carbone
-✅ Économies substantielles
-✅ Valorisation du patrimoine architectural
-
-Le réemploi n'est pas seulement un geste écologique, c'est une démarche économiquement viable et socialement responsable.
-
-#Réemploi #MatériauxDurable #Construction #DéveloppementDurable`;
-      
-      case 'instagram':
-        return `🏗️ DONNER UNE SECONDE VIE AUX MATÉRIAUX 🏗️
-
-Ces magnifiques carreaux de ciment ont été sauvés d'une démolition et vont désormais embellir un nouvel espace de vie !
-
-Le réemploi, c'est la magie de transformer l'ancien en nouveau, l'histoire en avenir.
-
-Chez @raedificare, nous sommes passionnés par la recherche et la valorisation de ces trésors cachés dans les bâtiments anciens.
-
-→ Swipe pour voir l'avant/après ! ←
-
-#ReemploiMateriaux #EconomieCirculaire #Architecture #Renovation #PatrimoineBati #DeveloppementDurable #SecondLife #Upcycling`;
-      
-      case 'facebook':
-        return `🔍 RAEDIFICARE EN ACTION !
-
-Notre équipe est intervenue cette semaine dans un hôtel particulier du 7ème arrondissement de Paris en cours de rénovation.
-
-Nous avons identifié plus de 200m² de parquet ancien en chêne massif, 12 portes d'époque en excellent état, et plusieurs radiateurs en fonte ornementés qui méritent une seconde vie !
-
-Grâce à notre réseau de partenaires, ces matériaux d'exception seront réemployés dans d'autres projets, évitant ainsi près de 8 tonnes de déchets.
-
-Le réemploi, c'est bon pour la planète ET pour votre porte-monnaie ! 💚💰
-
-👉 Vous avez un projet de rénovation ou de démolition ? Contactez-nous pour un diagnostic réemploi !`;
-      
-      default:
-        return "Le contenu n'a pas pu être généré. Veuillez réessayer.";
+Contactez-nous pour découvrir comment RAEDIFICARE peut vous accompagner dans votre démarche d'économie circulaire.`);
+    } finally {
+      setIsGenerating(false);
     }
   };
   
-  const getCurrentContent = () => {
-    const content = generatedContents.find(item => item.type === activeContentTab);
-    return content || { type: activeContentTab, content: '', imageUrl: undefined };
-  };
-  
   const handleCopyContent = () => {
-    const content = getCurrentContent();
-    navigator.clipboard.writeText(content.content);
+    navigator.clipboard.writeText(generatedContent);
     toast({
       title: "Copié !",
       description: "Le contenu a été copié dans le presse-papier",
@@ -368,24 +233,20 @@ Le réemploi, c'est bon pour la planète ET pour votre porte-monnaie ! 💚💰
           
           <div className="space-y-4">
             <div>
-              <Label className="mb-2 block">Types de contenu</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {contentTypes.map((type) => (
-                  <div key={type.value} className="flex items-center space-x-2">
-                    <Checkbox 
-                      id={`content-type-${type.value}`}
-                      checked={selectedContentTypes.includes(type.value)}
-                      onCheckedChange={() => handleContentTypeChange(type.value)}
-                    />
-                    <Label 
-                      htmlFor={`content-type-${type.value}`}
-                      className="cursor-pointer"
-                    >
-                      {type.label}
-                    </Label>
-                  </div>
-                ))}
-              </div>
+              <Label htmlFor="content-type">Type de contenu</Label>
+              <Tabs 
+                id="content-type"
+                value={selectedType} 
+                onValueChange={setSelectedType}
+                className="w-full mt-2"
+              >
+                <TabsList className="grid grid-cols-2 md:grid-cols-4">
+                  <TabsTrigger value="blog">Blog</TabsTrigger>
+                  <TabsTrigger value="instagram">Instagram</TabsTrigger>
+                  <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
+                  <TabsTrigger value="facebook">Facebook</TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
             
             <div>
@@ -419,7 +280,7 @@ Le réemploi, c'est bon pour la planète ET pour votre porte-monnaie ! 💚💰
             <div className="pt-2">
               <Button 
                 onClick={handleGenerate} 
-                disabled={!selectedRapport || selectedContentTypes.length === 0 || isGenerating}
+                disabled={!selectedRapport || isGenerating}
                 className="w-full"
                 style={{ backgroundColor: '#eb661a' }}
               >
@@ -436,8 +297,8 @@ Le réemploi, c'est bon pour la planète ET pour votre porte-monnaie ! 💚💰
         
         <div className="bg-white p-6 rounded-lg border border-neutral-200 shadow-sm">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium">Contenus générés</h2>
-            {generatedContents.length > 0 && (
+            <h2 className="text-lg font-medium">Contenu généré</h2>
+            {generatedContent && (
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -450,41 +311,20 @@ Le réemploi, c'est bon pour la planète ET pour votre porte-monnaie ! 💚💰
             )}
           </div>
           
-          {generatedContents.length > 0 && (
-            <div className="mb-3">
-              <Tabs value={activeContentTab} onValueChange={(value) => setActiveContentTab(value as ContentType)}>
-                <TabsList className="w-full grid grid-cols-4">
-                  {selectedContentTypes.map((type) => {
-                    const hasContent = generatedContents.some(content => content.type === type);
-                    return (
-                      <TabsTrigger 
-                        key={type} 
-                        value={type}
-                        disabled={!hasContent}
-                      >
-                        {contentTypes.find(t => t.value === type)?.label}
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-              </Tabs>
-            </div>
-          )}
-          
           <div className="min-h-[400px] bg-neutral-50 rounded-md p-4 border border-neutral-200 overflow-y-auto">
             {isGenerating ? (
               <div className="flex flex-col items-center justify-center h-full text-neutral-500">
                 <RefreshCw className="h-8 w-8 animate-spin mb-3" />
                 <p>Génération de votre contenu...</p>
               </div>
-            ) : generatedContents.length > 0 ? (
+            ) : generatedContent ? (
               <div className="prose max-w-none">
-                <div className="whitespace-pre-wrap">{getCurrentContent().content}</div>
+                <div className="whitespace-pre-wrap">{generatedContent}</div>
                 
-                {getCurrentContent().imageUrl && (
+                {generatedImageUrl && (
                   <div className="mt-4">
                     <img 
-                      src={getCurrentContent().imageUrl} 
+                      src={generatedImageUrl} 
                       alt="Illustration générée" 
                       className="max-w-full h-auto rounded-md" 
                     />
