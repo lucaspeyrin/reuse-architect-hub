@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import MainLayout from '../layouts/MainLayout';
 import ProjectGrid from '../components/ProjectGrid';
@@ -96,7 +95,7 @@ const Index: React.FC = () => {
           title: 'Renouvellement Campus Universitaire',
           client: 'Université Paris-Saclay',
           description: 'Diagnostic complet des bâtiments du campus avant rénovation énergétique et architecturale.',
-          status: 'archived',
+          status: 'archived' as 'archived',
           date: '28/04/2025',
         },
       ]);

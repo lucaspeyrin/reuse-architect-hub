@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import MainLayout from '../layouts/MainLayout';
@@ -95,7 +94,7 @@ const ProjectPage: React.FC = () => {
         { id: 'd3', name: 'Inventaire préliminaire.xlsx', type: 'excel', date: '12/05/2025' },
       ];
       
-      const mockChatMessages = [
+      const mockChatMessages: ChatMessage[] = [
         { id: 'm1', sender: 'user', text: 'Quels sont les matériaux principaux identifiés dans ce projet ?', time: '14:25' },
         { id: 'm2', sender: 'bot', text: 'Dans ce projet de rénovation, les principaux matériaux identifiés pour le réemploi sont : des parquets en chêne massif (environ 120m²), des portes anciennes en bois (15 unités), des radiateurs en fonte (12 unités), des carreaux de ciment dans les parties communes, et plusieurs luminaires en laiton. L\'inventaire préliminaire estime une valeur de réemploi potentielle d\'environ 45 000€.', time: '14:26' },
       ];

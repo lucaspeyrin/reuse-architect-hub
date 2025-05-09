@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { 
@@ -21,13 +20,13 @@ interface CreateProjectButtonProps {
 
 const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCreate }) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     client: '',
     description: '',
-    files: [] as File[],
   });
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const { toast } = useToast();
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -37,97 +36,103 @@ const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCrea
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFormData(prev => ({
-        ...prev,
-        files: [...prev.files, ...Array.from(e.target.files as FileList)]
-      }));
+      setSelectedFiles([...e.target.files]);
     }
   };
   
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files) {
-      setFormData(prev => ({
-        ...prev,
-        files: [...prev.files, ...Array.from(e.dataTransfer.files)]
-      }));
+      setSelectedFiles([...e.dataTransfer.files]);
     }
   };
   
   const handleRemoveFile = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      files: prev.files.filter((_, i) => i !== index)
-    }));
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
   
-  const handleSubmit = async () => {
+  const generateUniqueId = () => {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  };
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!formData.title) {
       toast({
         title: "Erreur",
         description: "Le nom du projet est requis",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
     
-    setIsSubmitting(true);
+    setIsLoading(true);
     
     try {
-      // Préparer les données pour l'API
-      const formDataToSend = new FormData();
-      formDataToSend.append('title', formData.title);
-      formDataToSend.append('client_name', formData.client);
-      formDataToSend.append('description', formData.description);
+      // Préparation des URLs des documents pour un vrai appel API
+      const documentUrls = selectedFiles.map(file => URL.createObjectURL(file));
       
-      // Ajouter les fichiers
-      formData.files.forEach(file => {
-        formDataToSend.append('documents', file);
-      });
+      // En production, on enverrait les fichiers à un endpoint de stockage d'abord
+      // puis on utiliserait les URLs retournées
       
-      // Envoyer au webhook
-      const response = await fetch('https://api.ia2s.app/webhook/raedificare/projects/add', {
+      // Appel à l'API pour créer le projet
+      const response = await fetch('https://api.ia2s.app/webhook/raedificare/project/add', {
         method: 'POST',
-        body: formDataToSend,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: formData.title,
+          client_name: formData.client,
+          description: formData.description,
+          document_urls: documentUrls,
+        }),
       });
       
       if (!response.ok) {
         throw new Error(`Erreur HTTP: ${response.status}`);
       }
       
+      // Simuler une réponse API avec l'ID du projet
       const result = await response.json();
+      const projectId = result.project_id || generateUniqueId();
       
-      // Créer un nouvel objet projet pour l'affichage local
-      if (onProjectCreate) {
-        const newProject: Project = {
-          id: result.project_id || new Date().getTime().toString(),
-          title: formData.title,
-          client: formData.client,
-          description: formData.description,
-          status: 'draft',
-          date: new Date().toLocaleDateString('fr-FR'),
-        };
-        
-        onProjectCreate(newProject);
-      }
+      // Créer l'objet du nouveau projet
+      const newProject = {
+        id: projectId,
+        title: formData.title,
+        client: formData.client,
+        description: formData.description,
+        status: 'draft' as const,
+        date: new Date().toLocaleDateString('fr-FR'),
+      };
+      
+      // Appeler la fonction de callback pour ajouter le projet à l'état parent
+      onProjectCreate(newProject);
+      
+      // Réinitialiser le formulaire
+      setFormData({
+        title: '',
+        client: '',
+        description: '',
+      });
+      setSelectedFiles([]);
+      setIsDialogOpen(false);
       
       toast({
-        title: "Succès",
-        description: "Projet créé avec succès"
+        title: "Projet créé",
+        description: `Le projet "${formData.title}" a été créé avec succès.`,
       });
-      
-      // Réinitialiser et fermer
-      setIsDialogOpen(false);
-      setFormData({ title: '', client: '', description: '', files: [] });
     } catch (error) {
       console.error('Erreur lors de la création du projet:', error);
       toast({
         title: "Erreur",
-        description: "Impossible de créer le projet. Veuillez réessayer.",
-        variant: "destructive"
+        description: "Impossible de créer le projet",
+        variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
   
@@ -211,13 +216,13 @@ const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCrea
                 </label>
               </div>
               
-              {formData.files.length > 0 && (
+              {selectedFiles.length > 0 && (
                 <div className="mt-2">
                   <p className="text-xs font-medium text-neutral-600 mb-1">
-                    {formData.files.length} fichier(s) sélectionné(s)
+                    {selectedFiles.length} fichier(s) sélectionné(s)
                   </p>
                   <ul className="text-xs text-neutral-500 space-y-1">
-                    {formData.files.map((file, index) => (
+                    {selectedFiles.map((file, index) => (
                       <li key={index} className="flex justify-between items-center">
                         <span>{file.name}</span>
                         <Button 
@@ -238,15 +243,15 @@ const CreateProjectButton: React.FC<CreateProjectButtonProps> = ({ onProjectCrea
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isLoading}>
               Annuler
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={isSubmitting}
+              disabled={isLoading}
               style={{ backgroundColor: '#eb661a' }}
             >
-              {isSubmitting ? 'Création en cours...' : 'Créer le projet'}
+              {isLoading ? 'Création en cours...' : 'Créer le projet'}
             </Button>
           </DialogFooter>
         </DialogContent>
